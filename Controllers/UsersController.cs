@@ -5,6 +5,7 @@ using superVise.Services.Interfaces;
 
 namespace superVise.Controllers
 {
+    [Helpers.Authorization.Authorize]
     [ApiController]
     [Route("[controller]")]
     public class UsersController : ControllerBase
@@ -16,6 +17,7 @@ namespace superVise.Controllers
             _userService = userService;
         }
 
+        [AllowAnonymous]
         [HttpPost("authenticate")]
         public IActionResult Authenticate(AuthenticateRequest model)
         {
@@ -26,8 +28,7 @@ namespace superVise.Controllers
 
             return Ok(response);
         }
-
-        [Helpers.Authorization.Authorize]
+        
         [HttpGet]
         public IActionResult GetAll()
         {
