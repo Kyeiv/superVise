@@ -7,6 +7,8 @@ using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using superVise.Entities;
+using superVise.Entities.Context;
+using superVise.Helpers.Exceptions;
 using superVise.Helpers.Settings;
 using superVise.Models.Requests;
 using superVise.Models.Responses;
@@ -16,57 +18,94 @@ namespace superVise.Services
 {
     public class UserService : IUserService
     {
-        // users hardcoded for simplicity, store in a db with hashed passwords in production applications
-        private readonly List<User> _users = new List<User>
-        {
-            new User { Id = 1, FirstName = "Test", LastName = "User", Username = "test", Password = "test" }
-        };
+        private DataContext _context;
 
-        private readonly AppSettings _appSettings;
-
-        public UserService(IOptions<AppSettings> appSettings)
+        public UserService(DataContext context)
         {
-            _appSettings = appSettings.Value;
+            _context = context;
         }
 
-        public AuthenticateResponse Authenticate(AuthenticateRequest model)
+        public User Authenticate(AuthenticateRequest model)
         {
-            var user = _users.SingleOrDefault(x => x.Username == model.Username && x.Password == model.Password);
+            if (string.IsNullOrEmpty(model.Username) || string.IsNullOrEmpty(model.Password))
+                return null;
+            
+            var user = _context.Users.SingleOrDefault(x => x.Username == model.Username);
 
             // return null if user not found
             if (user == null) return null;
 
-            // authentication successful so generate jwt token
-            var token = GenerateJwtToken(user);
+            if (!BCrypt.Net.BCrypt.Verify(model.Password, user.Password)) return null;
 
-            return new AuthenticateResponse(user, token);
+            return user;
         }
 
         public IEnumerable<User> GetAll()
         {
-            return _users;
+            return _context.Users;
         }
 
         public User GetById(int id)
         {
-            return _users.FirstOrDefault(x => x.Id == id);
+            return _context.Users.Find(id);
+        }
+        
+        public User Create(User user, string password)
+        {
+            // validation
+            if (string.IsNullOrWhiteSpace(password))
+                throw new AppException("Password is required");
+
+            if (_context.Users.Any(x => x.Username == user.Username))
+                throw new AppException("Username \"" + user.Username + "\" is already taken");
+
+            user.Password = BCrypt.Net.BCrypt.HashPassword(password);
+            _context.Users.Add(user);
+            _context.SaveChanges();
+
+            return user;
         }
 
-        // helper methods
-
-        private string GenerateJwtToken(User user)
+        public void Update(User userParam, string password = null)
         {
-            // generate token that is valid for 7 days
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_appSettings.Secret);
-            var tokenDescriptor = new SecurityTokenDescriptor
+            var user = _context.Users.Find(userParam.Id);
+
+            if (user == null)
+                throw new AppException("User not found");
+
+            // update username if it has changed
+            if (!string.IsNullOrWhiteSpace(userParam.Username) && userParam.Username != user.Username)
             {
-                Subject = new ClaimsIdentity(new[] { new Claim("id", user.Id.ToString()) }),
-                Expires = DateTime.UtcNow.AddDays(7),
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
-            };
-            var token = tokenHandler.CreateToken(tokenDescriptor);
-            return tokenHandler.WriteToken(token);
+                // throw error if the new username is already taken
+                if (_context.Users.Any(x => x.Username == userParam.Username))
+                    throw new AppException("Username " + userParam.Username + " is already taken");
+
+                user.Username = userParam.Username;
+            }
+
+            // update user properties if provided
+            if (!string.IsNullOrWhiteSpace(userParam.FirstName))
+                user.FirstName = userParam.FirstName;
+
+            if (!string.IsNullOrWhiteSpace(userParam.LastName))
+                user.LastName = userParam.LastName;
+
+            // update password if provided
+            if (!string.IsNullOrWhiteSpace(password))
+            {
+                user.Password = BCrypt.Net.BCrypt.HashPassword(password);
+            }
+
+            _context.Users.Update(user);
+            _context.SaveChanges();
+        }
+
+        public void Delete(int id)
+        {
+            var user = _context.Users.Find(id);
+            if (user == null) return;
+            _context.Users.Remove(user);
+            _context.SaveChanges();
         }
     }
 }
