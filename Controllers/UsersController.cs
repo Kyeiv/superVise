@@ -64,8 +64,7 @@ namespace superVise.Controllers
             {
                 Id = user.Id,
                 Username = user.Username,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
+                IsAdmin = user.IsAdmin,
                 Token = tokenString
             });
         }

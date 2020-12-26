@@ -1,17 +1,9 @@
-using System;
 using System.Collections.Generic;
-using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
-using System.Security.Claims;
-using System.Text;
-using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using superVise.Entities;
 using superVise.Entities.Context;
 using superVise.Helpers.Exceptions;
-using superVise.Helpers.Settings;
 using superVise.Models.Requests;
-using superVise.Models.Responses;
 using superVise.Services.Interfaces;
 
 namespace superVise.Services
@@ -35,9 +27,7 @@ namespace superVise.Services
             // return null if user not found
             if (user == null) return null;
 
-            if (!BCrypt.Net.BCrypt.Verify(model.Password, user.Password)) return null;
-
-            return user;
+            return !BCrypt.Net.BCrypt.Verify(model.Password, user.Password) ? null : user;
         }
 
         public IEnumerable<User> GetAll()
@@ -58,6 +48,9 @@ namespace superVise.Services
 
             if (_context.Users.Any(x => x.Username == user.Username))
                 throw new AppException("Username \"" + user.Username + "\" is already taken");
+            
+            if (user.IsAdmin.ToUpper() != "FALSE" && user.IsAdmin.ToUpper() != "TRUE")
+                throw new AppException("IsAdmin \"" + user.IsAdmin + "\" bad value");
 
             user.Password = BCrypt.Net.BCrypt.HashPassword(password);
             _context.Users.Add(user);
@@ -83,12 +76,11 @@ namespace superVise.Services
                 user.Username = userParam.Username;
             }
 
+            if (userParam.IsAdmin.ToUpper() != "FALSE" && userParam.IsAdmin.ToUpper() != "TRUE")
+                throw new AppException("IsAdmin \"" + user.IsAdmin + "\" bad value");
             // update user properties if provided
-            if (!string.IsNullOrWhiteSpace(userParam.FirstName))
-                user.FirstName = userParam.FirstName;
-
-            if (!string.IsNullOrWhiteSpace(userParam.LastName))
-                user.LastName = userParam.LastName;
+            if (!string.IsNullOrWhiteSpace(userParam.IsAdmin))
+                user.IsAdmin = userParam.IsAdmin;
 
             // update password if provided
             if (!string.IsNullOrWhiteSpace(password))
